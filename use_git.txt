@@ -1,0 +1,22 @@
+# How to use git
+1. Download git and git bash
+2. Create a folder and work inside
+3. Add code 
+4  Initialize the repositiry
+ git init
+5. To track changes, add the file 
+ git add file
+6. Check status of the filr
+ git status
+7. To commit changes to the file
+ git commit -m "write what is added in this file to commit"
+8. To track the history 
+ git log
+9. To upload to the github repository, list all folders that should be ignored
+ echo file >> .gitignore
+10. Go to github, create new repository with the same name
+11. Link remote repo to online repo, add origin to remote
+ git remote add origin "online_repo_link"
+12. To push the code to repo
+ git push -u origin master
+
