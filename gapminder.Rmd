@@ -1,0 +1,216 @@
+---
+title: "Understanding continuous data and its distribution"
+author: "Aarti Darra"
+date: "9/20/2022"
+output: html_document
+---
+```{r setup,include=FALSE}
+knitr::opts_chunk$set(class.source="bg-danger")
+```
+
+WHAT IS THIS PROJECT ABOUT?
+This is the life expectancy data of populations of different geographical regions over time
+
+HOW WOULD THIS PROJECT BE HELPFUL?
+This would be helpful in three ways:
+
+1. Getting the basic understanding of data
+2. Using loop to apply same function over all the columns at once
+3. Applying statistical tests on the data
+
+**Load the required libraries**
+
+```{r, eval=TRUE, results=FALSE}
+library("dplyr")
+library("tidyverse")
+library("finalfit") ## missing_glimpse
+library("gapminder")
+library(rstatix)
+library(broom)
+library(ggfortify) # autoplot
+```
+
+**Load the data and carefully inspect it**
+
+```{r}
+data<- gapminder
+dim(data)
+head(data)
+names(data)
+glimpse(data) ## provides the information about the type of variable
+missing_glimpse(data) ## provides information about the missing data for each column
+ff_glimpse(data)
+## provides the summary statistics of each column
+```
+
+**Above analysis tells us that there is no missing data.**
+Thus, we can proceed further. 
+**Let's now understand the distribution of the data.**
+The introductory plots are histograms, Q-Q plots and Box-plots 
+
+Let's explore year wise life expectancy in different continents. 
+Let's pick two years that are a decade apart, example, 1987 and 1997. 
+
+**Histograms**
+```{r}
+unique(data$year)
+dim(data)
+data %>% filter(year %in% c(1987, 1997)) %>% ggplot(aes(x=lifeExp)) + geom_histogram() + facet_grid(year~continent) + theme_bw()
+```
+
+**Q-Q plot**
+```{r}
+data %>% filter(year %in% c(1987, 1997)) %>% ggplot(aes(sample=lifeExp)) + geom_qq() + geom_qq_line(color = "blue")+facet_grid(year~continent) +theme_bw()
+```
+
+**Box-plot**
+```{r}
+data %>% filter(year %in% c(1987, 1997)) %>% ggplot(aes(x= factor(year), y=lifeExp)) + geom_boxplot() + geom_jitter(alpha= 0.5)+ facet_wrap(~continent, ncol= 5) + ## stating factor is important as not doing this would bring all years on x-axis and state number of columns + 
+xlab("year") + theme_bw()
+```
+
+
+
+
+The above graphs hint at the possibility of a non-normal distribution 
+Let's check for the normality of the data using Shapiro Wilk test, besides the visual inspection
+
+**Note**: There is a downside to the Shapiro Wilk test.
+Shapiro wilk will give a non-significant p value with small n and a significant one with large n, evn when the data looks normal distributed visually.
+
+Thus more than the result of this test, common sense must prevail.
+
+The test can be performed sequentially on columns or using **loop** with several columns
+```{r}
+filter(data, continent == "Africa") %>% shapiro_test(lifeExp)
+filter(data, continent == "Americas") %>% shapiro_test(lifeExp)
+filter(data, continent == "Europe") %>% shapiro_test(lifeExp)
+filter(data, continent == "Asia") %>% shapiro_test(lifeExp)
+filter(data, continent == "Oceania") %>% shapiro_test(lifeExp)
+### or write a loop
+## declare a container for storing p values
+## read all the unique inputs
+## subset for different continents
+## calculate p values for each subset
+loop_shapiro = list() 
+for(input in unique(data$continent)) 
+{
+  sub <- filter(data, continent == input) 
+  loop_shapiro[[input]] <- shapiro.test(sub$lifeExp)
+}
+print(loop_shapiro)
+```
+
+The normality test can also be conducted across years in different continents.
+
+```{r}
+unique(data$continent)
+data1 <- data %>% filter(continent != "Oceania")
+## Even after using filter function of dplyr, the "Oceania" level is still displayed. to combat this issue use droplevels
+data2 <- droplevels(data1)
+unique(data2$continent)
+mylist <- split(data2, f = list(data2$continent, data2$year))
+#mylist
+#names(mylist)
+for (name in names(mylist))
+{
+sub <- mylist[[name]]
+loop_shapiro[[name]] <- shapiro.test(sub$lifeExp)
+}
+loop_shapiro
+```
+
+**How to interpret the Shapiro-Wilk test?**
+Null hypothesis: The data is normally distributed
+Alternative hypothesis: The data is not normally distributed
+
+Let's understand how to apply statistical tests by asking questions.
+Q1: Is life expectancy different between Asia and America in the year 1997 ? 
+ 
+ 
+```{r}
+ttest_data <- data %>% filter(continent %in% c("Asia", "Americas") & year == 1997)
+unique(ttest_data$continent)
+ttest_result <- ttest_data %>% t.test(lifeExp ~ continent, data = .) %>% tidy()
+ttest_result
+#Pipe sends data as the first input whereas in t test it is required as the second argument
+#data= . is a means to redirect the data
+#Since t test result output is a list, tidy() from broom package can be used to wrangle the output.
+```
+
+**Interpretation:**
+Welch two sample t-test
+Null hypothesis: There is no difference in means between two groups.
+Alternative hypothesis: There is a difference in means
+Since the p value is not significant, we cannot reject null hypothesis. 
+
+**Note**: This test copes with the variance between two groups
+
+####################################################################################
+
+**Next**, let's explore the paired data, that is coming from single source  
+Look at the difference in the life expectancy of Asia between year 1987 and 1997
+Let's also look at the difference in the life expectancy in Asia country wise
+
+```{r}
+paired_data <- data %>% filter(year %in% c(1987, 1997) & continent == "Asia") 
+paired_data
+paired_data$country
+paired_data %>% t.test(lifeExp ~ year, data = .) %>% tidy()
+## to visually inspect the difference, line plot would serve the purpose
+paired_data %>% ggplot(aes(x= year, y = lifeExp, color = country)) + geom_line() 
+paired_tab <- paired_data %>% select(country, year, lifeExp) %>% pivot_wider(names_from = year, values_from = lifeExp) %>% mutate(diffExp = `1997`-`1987`) 
+## A four digit year is not a valid R identifier in R. But - you can still create columns with illegal identifiers, simply enclose the column name in back ticks
+paired_tab$diffExp
+#####mean of difference in life exp
+paired_tab %>% summarise(mean = mean(diffExp))
+paired_data %>% t.test(lifeExp ~year, data = ., paired = T)
+```
+
+**We observed an average of 3.16 increase in life expectancy between 1987 and 1997, which is significant.**
+
+################################################################################
+
+**Next**, lets determine if the mean in each continent is different from a specific value in a particular year.
+
+Let's set the specific value to be 70
+
+```{r}
+data %>% filter(year == 1997) %>% group_by(continent) %>% summarize(mean = mean(lifeExp))
+data %>% filter(year == 1997) %>% group_by(continent) %>% do(t.test(.$lifeExp, mu =70) %>% tidy())
+```
+So far, we only have two groups for analysis
+
+#########################################################################
+
+**Let's try now estimating the difference in life expectancy between 3 continents**
+Here, anova is the test of choice
+```{r}
+aov_data <- data %>% filter(year == 2007 & continent %in% c("Asia", "Americas", "Europe")) 
+#or
+data %>% filter(year == 2007 & continent %in% c("Asia", "Americas", "Europe")) %>% aov(lifeExp ~ continent, data = .) %>% tidy()
+```
+The result suggests that there is a significant difference but where does this difference lie
+Let's find out
+
+```{r}
+pairwise.t.test(aov_data$lifeExp, aov_data$continent, p.adjust.method = "bonferroni")
+pairwise.t.test(aov_data$lifeExp, aov_data$continent, p.adjust.method = "fdr")
+```
+
+As t test comes with its assumption of normality, anova assumptions align with linear regression. 
+To see if the assumptions are met,diagnostic plots are helpful
+
+```{r}
+aov_data <- data %>% filter(year == 2007 & continent %in% c("Asia", "Americas", "Europe")) 
+fit <- aov(lifeExp ~ continent, data = aov_data)
+autoplot(fit)
+```
+
+The next project would continue from here and would cover the understanding of anova testing, its assumptions and would lay the foundation of its extension, **linear regression**. 
+
+**Feel free to Connect on LinkedIn**
+
+
+
+##########################################################################
